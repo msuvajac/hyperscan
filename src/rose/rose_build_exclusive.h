@@ -58,6 +58,10 @@ struct ExclusiveSubengine {
 
 /** \brief exclusive info to build tamarama */
 struct ExclusiveInfo {
+    ExclusiveInfo() = default;
+    ExclusiveInfo(ExclusiveInfo &&other)
+        : subengines(std::move(other.subengines)),
+          reports(std::move(other.reports)), queue(other.queue) {}
     // subengine info
     std::vector<ExclusiveSubengine> subengines;
     // all the report in tamarama
