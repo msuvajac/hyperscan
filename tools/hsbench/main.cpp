@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Intel Corporation
+ * Copyright (c) 2016-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -56,6 +56,9 @@
 #include <getopt.h>
 #ifndef _WIN32
 #include <pthread.h>
+#if defined(HAVE_PTHREAD_NP_H)
+#include <pthread_np.h>
+#endif
 #include <unistd.h>
 #endif
 
@@ -72,6 +75,8 @@ bool saveDatabases = false;
 bool loadDatabases = false;
 string serializePath("");
 unsigned int somPrecisionMode = HS_MODE_SOM_HORIZON_LARGE;
+bool forceEditDistance = false;
+unsigned editDistance = 0;
 
 namespace /* anonymous */ {
 
@@ -120,7 +125,11 @@ public:
     // Apply processor affinity (if available) to this thread.
     bool affine(UNUSED int cpu) {
 #ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
+#if defined(__FreeBSD__)
+        cpuset_t cpuset;
+#else
         cpu_set_t cpuset;
+#endif
         CPU_ZERO(&cpuset);
         assert(cpu >= 0 && cpu < CPU_SETSIZE);
 
@@ -164,11 +173,15 @@ void usage(const char *error) {
            " (default: streaming).\n");
     printf("  -V              Benchmark in vectored mode"
            " (default: streaming).\n");
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
     printf("  -T CPU,CPU,...  Benchmark with threads on these CPUs.\n");
+#endif
     printf("  -i DIR          Don't compile, load from files in DIR"
            " instead.\n");
     printf("  -w DIR          After compiling, save to files in DIR.\n");
     printf("  -d NUMBER       Set SOM precision mode (default: 8 (large)).\n");
+    printf("  -E DISTANCE     Match all patterns within edit distance"
+           " DISTANCE.\n");
     printf("\n");
     printf("  --per-scan      Display per-scan Mbit/sec results.\n");
     printf("  --echo-matches  Display all matches that occur during scan.\n");
@@ -190,8 +203,12 @@ struct BenchmarkSigs {
 /** Process command-line arguments. Prints usage and exits on error. */
 static
 void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
-                 UNUSED Grey &grey) {
-    const char options[] = "-b:c:Cd:e:G:hi:n:No:p:sT:Vw:z:";
+                 UNUSED unique_ptr<Grey> &grey) {
+    const char options[] = "-b:c:Cd:e:E:G:hi:n:No:p:sVw:z:"
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
+        "T:" // add the thread flag
+#endif
+        ;
     int in_sigfile = 0;
     int do_per_scan = 0;
     int do_echo_matches = 0;
@@ -237,9 +254,17 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
         case 'e':
             exprPath.assign(optarg);
             break;
+        case 'E':
+            if (!fromString(optarg, editDistance)) {
+                usage("Couldn't parse argument to -E flag, should be"
+                      " a non-negative integer.");
+                exit(1);
+            }
+            forceEditDistance = true;
+            break;
 #ifndef RELEASE_BUILD
         case 'G':
-            applyGreyOverrides(&grey, string(optarg));
+            applyGreyOverrides(grey.get(), string(optarg));
             break;
 #endif
         case 'h':
@@ -262,6 +287,7 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
         case 'V':
             scan_mode = ScanMode::VECTORED;
             break;
+#ifdef HAVE_DECL_PTHREAD_SETAFFINITY_NP
         case 'T':
             if (!strToList(optarg, threadCores)) {
                 usage("Couldn't parse argument to -T flag, should be"
@@ -269,6 +295,7 @@ void processArgs(int argc, char *argv[], vector<BenchmarkSigs> &sigSets,
                 exit(1);
             }
             break;
+#endif
         case 'z': {
             unsigned int sinumber;
             if (!fromString(optarg, sinumber)) {
@@ -586,6 +613,17 @@ void displayPerScanResults(const vector<unique_ptr<ThreadContext>> &threads,
 }
 
 static
+double fastestResult(const vector<unique_ptr<ThreadContext>> &threads) {
+    double best = threads[0]->results[0].seconds;
+    for (const auto &t : threads) {
+        for (const auto &r : t->results) {
+            best = min(best, r.seconds);
+        }
+    }
+    return best;
+}
+
+static
 u64a byte_size(const vector<DataBlock> &corpus_blocks) {
     u64a total = 0;
     for (const DataBlock &block : corpus_blocks) {
@@ -613,8 +651,8 @@ void displayResults(const vector<unique_ptr<ThreadContext>> &threads,
         }
     }
 
-    printf("Time spent scanning:     %'0.3f seconds\n", totalSecs);
-    printf("Corpus size:             %'llu bytes ", bytesPerRun);
+    printf("Time spent scanning:       %'0.3f seconds\n", totalSecs);
+    printf("Corpus size:               %'llu bytes ", bytesPerRun);
     switch (scan_mode) {
     case ScanMode::STREAMING:
         printf("(%'zu blocks in %'llu streams)\n", corpus_blocks.size(),
@@ -633,13 +671,17 @@ void displayResults(const vector<unique_ptr<ThreadContext>> &threads,
     u64a totalBlocks = corpus_blocks.size() * repeats * threads.size();
 
     double matchRate = ((double)matchesPerRun * 1024) / bytesPerRun;
-    printf("Matches per iteration:   %'llu (%'0.3f matches/kilobyte)\n",
+    printf("Matches per iteration:     %'llu (%'0.3f matches/kilobyte)\n",
            matchesPerRun, matchRate);
 
     double blockRate = (double)totalBlocks / (double)totalSecs;
-    printf("Overall block rate:      %'0.2f blocks/sec\n", blockRate);
-    printf("Overall throughput:      %'0.2Lf Mbit/sec\n",
+    printf("Overall block rate:        %'0.2f blocks/sec\n", blockRate);
+    printf("Mean throughput (overall): %'0.2Lf Mbit/sec\n",
            calc_mbps(totalSecs, totalBytes));
+
+    double lowestScanTime = fastestResult(threads);
+    printf("Max throughput (per core): %'0.2Lf Mbit/sec\n",
+           calc_mbps(lowestScanTime, bytesPerRun));
     printf("\n");
 
     if (display_per_scan) {
@@ -723,8 +765,10 @@ void runBenchmark(const EngineHyperscan &db,
 
 /** Main driver. */
 int main(int argc, char *argv[]) {
-    Grey grey;
-
+    unique_ptr<Grey> grey;
+#if !defined(RELEASE_BUILD)
+    grey = make_unique<Grey>();
+#endif
     setlocale(LC_ALL, ""); // use the user's locale
 
 #ifndef NDEBUG
@@ -742,6 +786,7 @@ int main(int argc, char *argv[]) {
     // known expressions together.
     if (sigSets.empty()) {
         SignatureSet sigs;
+        sigs.reserve(exprMapTemplate.size());
         for (auto i : exprMapTemplate | map_keys) {
             sigs.push_back(i);
         }
@@ -758,14 +803,12 @@ int main(int argc, char *argv[]) {
     }
 
     for (const auto &s : sigSets) {
-        ExpressionMap exprMap = exprMapTemplate; // copy
-
-        limitBySignature(exprMap, s.sigs);
+        auto exprMap = limitToSignatures(exprMapTemplate, s.sigs);
         if (exprMap.empty()) {
             continue;
         }
 
-        auto engine = buildEngineHyperscan(exprMap, scan_mode, s.name, grey);
+        auto engine = buildEngineHyperscan(exprMap, scan_mode, s.name, *grey);
         if (!engine) {
             printf("Error: expressions failed to compile.\n");
             exit(1);

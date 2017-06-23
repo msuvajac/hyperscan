@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -187,6 +187,18 @@ void rawBlockExec(const struct RoseEngine *rose, struct hs_scratch *scratch) {
 }
 
 static really_inline
+void pureLiteralInitScratch(struct hs_scratch *scratch, u64a offset) {
+    // Some init has already been done.
+    assert(offset == scratch->core_info.buf_offset);
+
+    scratch->tctxt.lit_offset_adjust = offset + 1;
+    scratch->tctxt.lastEndOffset = offset;
+    scratch->tctxt.delayLastEndOffset = offset;
+    scratch->tctxt.filledDelayedSlots = 0;
+    scratch->al_log_sum = 0;
+}
+
+static really_inline
 void pureLiteralBlockExec(const struct RoseEngine *rose,
                           struct hs_scratch *scratch) {
     assert(rose);
@@ -198,12 +210,11 @@ void pureLiteralBlockExec(const struct RoseEngine *rose,
     size_t length = scratch->core_info.len;
     DEBUG_PRINTF("rose engine %d\n", rose->runtimeImpl);
 
-    // RoseContext values that need to be set for use by roseCallback.
+    pureLiteralInitScratch(scratch, 0);
     scratch->tctxt.groups = rose->initialGroups;
-    scratch->tctxt.lit_offset_adjust = 1;
 
     hwlmExec(ftable, buffer, length, 0, roseCallback, scratch,
-             rose->initialGroups);
+             rose->initialGroups & rose->floating_group_mask);
 }
 
 static really_inline
@@ -300,9 +311,10 @@ void runSmallWriteEngine(const struct SmallWriteEngine *smwr,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_scan(const hs_database_t *db, const char *data, unsigned length,
-                   unsigned flags, hs_scratch_t *scratch,
-                   match_event_handler onEvent, void *userCtx) {
+hs_error_t HS_CDECL hs_scan(const hs_database_t *db, const char *data,
+                            unsigned length, unsigned flags,
+                            hs_scratch_t *scratch, match_event_handler onEvent,
+                            void *userCtx) {
     if (unlikely(!scratch || !data)) {
         return HS_INVALID;
     }
@@ -492,8 +504,9 @@ void init_stream(struct hs_stream *s, const struct RoseEngine *rose,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_open_stream(const hs_database_t *db, UNUSED unsigned flags,
-                          hs_stream_t **stream) {
+hs_error_t HS_CDECL hs_open_stream(const hs_database_t *db,
+                                   UNUSED unsigned flags,
+                                   hs_stream_t **stream) {
     if (unlikely(!stream)) {
         return HS_INVALID;
     }
@@ -645,7 +658,8 @@ void report_eod_matches(hs_stream_t *id, hs_scratch_t *scratch,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_copy_stream(hs_stream_t **to_id, const hs_stream_t *from_id) {
+hs_error_t HS_CDECL hs_copy_stream(hs_stream_t **to_id,
+                                   const hs_stream_t *from_id) {
     if (!to_id) {
         return HS_INVALID;
     }
@@ -672,11 +686,11 @@ hs_error_t hs_copy_stream(hs_stream_t **to_id, const hs_stream_t *from_id) {
 }
 
 HS_PUBLIC_API
-hs_error_t hs_reset_and_copy_stream(hs_stream_t *to_id,
-                                    const hs_stream_t *from_id,
-                                    hs_scratch_t *scratch,
-                                    match_event_handler onEvent,
-                                    void *context) {
+hs_error_t HS_CDECL hs_reset_and_copy_stream(hs_stream_t *to_id,
+                                             const hs_stream_t *from_id,
+                                             hs_scratch_t *scratch,
+                                             match_event_handler onEvent,
+                                             void *context) {
     if (!from_id || !from_id->rose) {
         return HS_INVALID;
     }
@@ -743,16 +757,15 @@ void pureLiteralStreamExec(struct hs_stream *stream_state,
     DEBUG_PRINTF("::: streaming rose ::: offset = %llu len = %zu\n",
                  stream_state->offset, scratch->core_info.len);
 
-    // RoseContext values that need to be set for use by roseCallback.
+    pureLiteralInitScratch(scratch, stream_state->offset);
     scratch->tctxt.groups = loadGroups(rose, scratch->core_info.state);
-    scratch->tctxt.lit_offset_adjust = scratch->core_info.buf_offset + 1;
 
     // Pure literal cases don't have floatingMinDistance set, so we always
     // start the match region at zero.
     const size_t start = 0;
 
     hwlmExecStreaming(ftable, scratch, len2, start, roseCallback, scratch,
-                      rose->initialGroups);
+                      rose->initialGroups & rose->floating_group_mask);
 
     if (!told_to_stop_matching(scratch) &&
         isAllExhausted(rose, scratch->core_info.exhaustionVector)) {
@@ -896,9 +909,10 @@ hs_error_t hs_scan_stream_internal(hs_stream_t *id, const char *data,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_scan_stream(hs_stream_t *id, const char *data, unsigned length,
-                          unsigned flags, hs_scratch_t *scratch,
-                          match_event_handler onEvent, void *context) {
+hs_error_t HS_CDECL hs_scan_stream(hs_stream_t *id, const char *data,
+                                   unsigned length, unsigned flags,
+                                   hs_scratch_t *scratch,
+                                   match_event_handler onEvent, void *context) {
     if (unlikely(!id || !scratch || !data ||
                  !validScratch(id->rose, scratch))) {
         return HS_INVALID;
@@ -914,8 +928,9 @@ hs_error_t hs_scan_stream(hs_stream_t *id, const char *data, unsigned length,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_close_stream(hs_stream_t *id, hs_scratch_t *scratch,
-                           match_event_handler onEvent, void *context) {
+hs_error_t HS_CDECL hs_close_stream(hs_stream_t *id, hs_scratch_t *scratch,
+                                    match_event_handler onEvent,
+                                    void *context) {
     if (!id) {
         return HS_INVALID;
     }
@@ -937,9 +952,10 @@ hs_error_t hs_close_stream(hs_stream_t *id, hs_scratch_t *scratch,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_reset_stream(hs_stream_t *id, UNUSED unsigned int flags,
-                           hs_scratch_t *scratch, match_event_handler onEvent,
-                           void *context) {
+hs_error_t HS_CDECL hs_reset_stream(hs_stream_t *id, UNUSED unsigned int flags,
+                                    hs_scratch_t *scratch,
+                                    match_event_handler onEvent,
+                                    void *context) {
     if (!id) {
         return HS_INVALID;
     }
@@ -962,7 +978,8 @@ hs_error_t hs_reset_stream(hs_stream_t *id, UNUSED unsigned int flags,
 }
 
 HS_PUBLIC_API
-hs_error_t hs_stream_size(const hs_database_t *db, size_t *stream_size) {
+hs_error_t HS_CDECL hs_stream_size(const hs_database_t *db,
+                                   size_t *stream_size) {
     if (!stream_size) {
         return HS_INVALID;
     }
@@ -1009,10 +1026,13 @@ void dumpData(const char *data, size_t len) {
 #endif
 
 HS_PUBLIC_API
-hs_error_t hs_scan_vector(const hs_database_t *db, const char * const * data,
-                          const unsigned int *length, unsigned int count,
-                          UNUSED unsigned int flags, hs_scratch_t *scratch,
-                          match_event_handler onEvent, void *context) {
+hs_error_t HS_CDECL hs_scan_vector(const hs_database_t *db,
+                                   const char * const * data,
+                                   const unsigned int *length,
+                                   unsigned int count,
+                                   UNUSED unsigned int flags,
+                                   hs_scratch_t *scratch,
+                                   match_event_handler onEvent, void *context) {
     if (unlikely(!scratch || !data || !length)) {
         return HS_INVALID;
     }

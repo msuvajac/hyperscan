@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, Intel Corporation
+ * Copyright (c) 2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,37 +26,23 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MULTIVERMICELLI_H_
-#define MULTIVERMICELLI_H_
+/**
+ * \file
+ * \brief Parser for control verbs that can occur at the beginning of a pattern.
+ */
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#ifndef CONTROL_VERBS_H
+#define CONTROL_VERBS_H
 
-const u8 *long_vermicelliExec(char c, char nocase, const u8 *buf,
-                              const u8 *buf_end, const u8 run_len);
+#include "ue2common.h"
 
-const u8 *longgrab_vermicelliExec(char c, char nocase, const u8 *buf,
-                                  const u8 *buf_end, const u8 run_len);
+namespace ue2 {
 
-const u8 *shift_vermicelliExec(char c, char nocase, const u8 *buf,
-                               const u8 *buf_end, const u8 run_len);
+struct ParseMode;
 
-const u8 *shiftgrab_vermicelliExec(char c, char nocase, const u8 *buf,
-                                   const u8 *buf_end, const u8 run_len);
+const char *read_control_verbs(const char *ptr, const char *end, size_t start,
+                               ParseMode &mode);
 
-const u8 *doubleshift_vermicelliExec(char c, char nocase, const u8 *buf,
-                                     const u8 *buf_end, const u8 run_len,
-                                     const u8 run2_len);
+} // namespace ue2
 
-const u8 *doubleshiftgrab_vermicelliExec(char c, char nocase, const u8 *buf,
-                                         const u8 *buf_end, const u8 run_len,
-                                         const u8 run2_len);
-
-#ifdef __cplusplus
-}
-#endif
-
-
-#endif /* MULTIVERMICELLI_H_ */
+#endif // CONTROL_VERBS_H

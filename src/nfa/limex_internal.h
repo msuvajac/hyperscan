@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Intel Corporation
+ * Copyright (c) 2015-2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -85,6 +85,7 @@
 
 #define LIMEX_FLAG_COMPRESS_STATE  1 /**< pack state into stream state */
 #define LIMEX_FLAG_COMPRESS_MASKED 2 /**< use reach mask-based compression */
+#define LIMEX_FLAG_CANNOT_DIE      4 /**< limex cannot have no states on */
 
 enum LimExTrigger {
     LIMEX_TRIGGER_NONE = 0,
@@ -151,7 +152,7 @@ struct LimExNFA##size {                                                     \
                                     *  followers */                         \
     u_##size compressMask; /**< switch off before compress */               \
     u_##size exceptionMask;                                                 \
-    u_##size repeatCyclicMask;                                              \
+    u_##size repeatCyclicMask; /**< also includes tug states */             \
     u_##size zombieMask; /**< zombie if in any of the set states */         \
     u_##size shift[MAX_SHIFT_COUNT];                                        \
     u32 shiftCount; /**< number of shift masks used */                      \

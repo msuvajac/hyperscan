@@ -2,6 +2,64 @@
 
 This is a list of notable changes to Hyperscan, in reverse chronological order.
 
+## [4.5.1] 2017-06-16
+- Bugfix for issue #56: workaround for gcc-4.8 C++11 defect.
+- Bugfix for literal matching table generation, reversing a regression in
+  performance for some literal matching cases.
+- Bugfixes for hsbench, related to multicore benchmarking, portability fixes
+  for FreeBSD, and clarifying output results.
+- CMake: removed a duplicate else branch that causes very recent (v3.9) builds
+  of CMake to fail.
+
+## [4.5.0] 2017-06-09
+- New API feature: approximate matching using the "edit distance" extended
+  parameter. This allows the user to request all matches that are a given edit
+  distance from an exact match for a pattern.
+- Initial support for Intel(R) Advanced Vector Extensions 512 (Intel(R)
+  AVX-512), disabled by default. To enable it, pass `-DBUILD_AVX512=1` to
+  `cmake`.
+- Major compile time improvements in many subsystems, reducing compile time
+  significantly for many large pattern sets.
+- Internal reworking of literal matchers to operate on literals of at
+  most eight characters, with subsequent confirmation done in the Rose
+  interpreter. This reduces complexity and bytecode size and improves
+  performance for many pattern sets.
+- Improve performance of the FDR literal matcher front end.
+- Improve bucket assignment and other heuristics governing the FDR literal
+  matcher.
+- Improve optimisation passes that take advantage of extended parameter
+  constraints (`min_offset`, etc).
+- Introduce further lookaround specialisations to improve scanning performance.
+- Optimise Rose interpreter construction to reduce the length of programs
+  generated in some situations.
+- Remove the old "Rose" pattern decomposition analysis pass in favour of the
+  new "Violet" pass introduced in Hyperscan 4.3.0.
+- In streaming mode, allow exhaustion (where the stream can no longer produce
+  matchers) to be detected in more situations, improving scanning performance.
+- Improve parsing of control verbs (such as `(*UTF8)`) that can only occur at
+  the beginning of the pattern. Combinations of supported verbs in any order
+  are now permitted.
+- Update version of PCRE used by testing tools as a syntax and semantic
+  reference to PCRE 8.40.
+- Tuning support for Intel(R) microarchitecture code names Skylake, Skylake
+  Server, Goldmont.
+- CMake: when building a native build with a version of GCC that doesn't
+  recognise the host compiler, tune for the microarch selected by
+  `-march=native`.
+- CMake: don't fail if SQLite (which is only required to build the `hsbench`
+  tool) is not present.
+- CMake: detect libc++ directly and use that to inform the Boost version
+  requirement.
+- Bugfix for issue #51: make the fat runtime build wrapper less fragile.
+- Bugfix for issues #46, #52: use `sqlite3_errmsg()` to allow SQLite 3.6.x to
+  be used. Thanks to @EaseTheWorld for the PR.
+
+## [4.4.1] 2017-02-28
+- Bugfixes to fix issues where stale data was being referenced in scratch
+  memory. In particular this may have resulted in `hs_close_stream()`
+  referencing data from other previously scanned streams. This may result in
+  incorrect matches being been reported.
+
 ## [4.4.0] 2017-01-20
 - Introduce the "fat runtime" build. This will build several variants of the
   Hyperscan scanning engine specialised for different processor feature sets,

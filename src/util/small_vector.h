@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Intel Corporation
+ * Copyright (c) 2017, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,45 +26,40 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-/** \file
- * \brief Multishufti: multibyte version of Shufti
- *
- * Utilises the SSSE3 pshufb shuffle instruction
- */
+#ifndef UTIL_SMALL_VECTOR_H
+#define UTIL_SMALL_VECTOR_H
 
-#ifndef MULTISHUFTI_H
-#define MULTISHUFTI_H
+#include <vector>
 
-#include "ue2common.h"
-#include "util/simd_types.h"
+#include <boost/version.hpp>
 
-#ifdef __cplusplus
-extern "C"
-{
+#if BOOST_VERSION >= 105800
+#  define HAVE_BOOST_CONTAINER_SMALL_VECTOR
 #endif
 
-const u8 *long_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                          const u8 *buf_end, const u8 run_len);
-
-const u8 *longgrab_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                              const u8 *buf_end, const u8 run_len);
-
-const u8 *shift_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                           const u8 *buf_end, const u8 run_len);
-
-const u8 *shiftgrab_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                               const u8 *buf_end, const u8 run_len);
-
-const u8 *doubleshift_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                                 const u8 *buf_end, const u8 run_len,
-                                 const u8 run2_len);
-
-const u8 *doubleshiftgrab_shuftiExec(m128 mask_lo, m128 mask_hi, const u8 *buf,
-                                     const u8 *buf_end, const u8 run_len,
-                                     const u8 run2_len);
-
-#ifdef __cplusplus
-}
+#if defined(HAVE_BOOST_CONTAINER_SMALL_VECTOR)
+#  include <boost/container/small_vector.hpp>
 #endif
 
-#endif
+namespace ue2 {
+
+#if defined(HAVE_BOOST_CONTAINER_SMALL_VECTOR)
+
+template <class T, std::size_t N,
+          typename Allocator = boost::container::new_allocator<T>>
+using small_vector = boost::container::small_vector<T, N, Allocator>;
+
+#else
+
+// Boost version isn't new enough, fall back to just using std::vector.
+template <class T, std::size_t N, typename Allocator = std::allocator<T>>
+using small_vector = std::vector<T, Allocator>;
+
+// Support workarounds for flat_set/flat_map and GCC 4.8.
+#define SMALL_VECTOR_IS_STL_VECTOR 1
+
+#endif // HAVE_BOOST_CONTAINER_SMALL_VECTOR
+
+} // namespace ue2
+
+#endif // UTIL_SMALL_VECTOR_H
